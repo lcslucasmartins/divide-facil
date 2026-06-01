@@ -518,54 +518,51 @@ function buscar(silencioso){
   if(!silencioso) setSyncCard('🔄 Buscando...','#E6EFFA','#1A5EAA');
   var xhr=new XMLHttpRequest();
   xhr.open('GET',SHEETS_URL+'?action=getAll',true);
-  xhr.timeout=12000;
+  xhr.timeout=20000;
   xhr.onreadystatechange=function(){
-    if(xhr.readyState===4){
-      if(xhr.status===200){
-        try{
-          var res=JSON.parse(xhr.responseText);
-          if(res&&res.ok&&res.data){
-            var novos=0;
-            (res.data.expenses||[]).forEach(function(g){
-              if(!App.gastos.find(function(x){return x.id===g.id;})){App.gastos.push(g);novos++;}
-            });
-            (res.data.incomes||[]).forEach(function(e){
-              if(!App.entradas.find(function(x){return x.id===e.id;})){App.entradas.push(e);novos++;}
-            });
-            if(novos>0){
-              sv('df_gastos',App.gastos); sv('df_entradas',App.entradas);
-              renderLogin();
-              var abaOn=document.querySelector('.aba.on');
-              if(abaOn){
-                var aid=abaOn.id;
-                if(aid==='aba-painel') rPainel();
-                if(aid==='aba-gastos') rGastos();
-                if(aid==='aba-geral')  rGeral();
-              }
-              notif(novos+' novo(s) registro(s) sincronizado(s) ✅');
-            }
-            setSyncTopo('🟢 Sincronizado','');
-            if(!silencioso) setSyncCard('🟢 Sincronizado!','#E4F0DA','#276B0F');
+    if(xhr.readyState!==4) return;
+    if(xhr.status===200){
+      try{
+        var res=JSON.parse(xhr.responseText);
+        if(res&&res.ok&&res.data){
+          // Sheets é a fonte de verdade — substitui tudo
+          App.gastos   = res.data.expenses || [];
+          App.entradas = res.data.incomes  || [];
+          sv('df_gastos',   App.gastos);
+          sv('df_entradas', App.entradas);
+          renderLogin();
+          var abaOn=document.querySelector('.aba.on');
+          if(abaOn){
+            var aid=abaOn.id;
+            if(aid==='aba-painel') rPainel();
+            if(aid==='aba-gastos') rGastos();
+            if(aid==='aba-geral')  rGeral();
           }
-        }catch(e){ if(!silencioso) setSyncCard('⚠️ Erro ao ler resposta','#FAE8CE','#8A4F08'); }
-      } else {
-        if(!silencioso) setSyncCard('🔴 Erro '+xhr.status,'#FAE0E0','#9E2B2B');
+          setSyncTopo('🟢 Sincronizado','');
+          if(!silencioso) setSyncCard('🟢 Atualizado!','#E4F0DA','#276B0F');
+        }
+      }catch(err){
+        if(!silencioso) setSyncCard('⚠️ Erro: '+err.message,'#FAE8CE','#8A4F08');
       }
+    } else {
+      setSyncTopo('🟡 Usando dados locais','#F5A623');
+      if(!silencioso) setSyncCard('🔴 Erro '+xhr.status,'#FAE0E0','#9E2B2B');
     }
   };
-  xhr.onerror=function(){ setSyncTopo('🟡 Offline','#F5A623'); if(!silencioso) setSyncCard('🔴 Sem internet','#FAE0E0','#9E2B2B'); };
-  xhr.ontimeout=function(){ if(!silencioso) setSyncCard('🔴 Tempo esgotado','#FAE0E0','#9E2B2B'); };
-  try{ xhr.send(); }catch(e){}
+  xhr.onerror  =function(){ setSyncTopo('🟡 Offline','#F5A623'); };
+  xhr.ontimeout=function(){ setSyncTopo('🟡 Timeout','#F5A623'); };
+  try{ xhr.send(); }catch(e){ setSyncTopo('🟡 Erro de rede','#F5A623'); }
 }
 
 function iniciarSync(){
   pararSync();
-  buscar(true); // busca imediata ao entrar
+  buscar(true);
   App.syncTimer=setInterval(function(){ buscar(true); },30000);
 }
 function pararSync(){
   if(App.syncTimer){ clearInterval(App.syncTimer); App.syncTimer=null; }
 }
+
 
 function notif(msg){
   var el=document.getElementById('notif');
@@ -1068,7 +1065,9 @@ document.getElementById('btn-add-pess').addEventListener('click',function(){
 //  INIT
 // ══════════════════════════════════════════════════
 inicializar();
-// Tela de senha é a primeira — login só aparece após senha correta
+// A tela de senha aparece primeiro.
+// Ao digitar a senha correta → irá para login
+// Ao entrar com usuário → iniciarSync() busca dados do Sheets
 </script>
 </body>
 </html>
