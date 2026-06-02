@@ -516,51 +516,75 @@ function enviar(){
 // BUSCAR (auto + manual)
 function buscar(silencioso){
   if(!silencioso) setSyncCard('🔄 Buscando...','#E6EFFA','#1A5EAA');
-  var xhr=new XMLHttpRequest();
-  xhr.open('GET',SHEETS_URL+'?action=getAll',true);
-  xhr.timeout=20000;
-  xhr.onreadystatechange=function(){
-    if(xhr.readyState!==4) return;
-    if(xhr.status===200){
-      try{
-        var res=JSON.parse(xhr.responseText);
-        if(res&&res.ok&&res.data){
-          // Sheets é a fonte de verdade — substitui tudo
-          App.gastos   = res.data.expenses || [];
-          App.entradas = res.data.incomes  || [];
-          sv('df_gastos',   App.gastos);
-          sv('df_entradas', App.entradas);
-          renderLogin();
-          var abaOn=document.querySelector('.aba.on');
-          if(abaOn){
-            var aid=abaOn.id;
-            if(aid==='aba-painel') rPainel();
-            if(aid==='aba-gastos') rGastos();
-            if(aid==='aba-geral')  rGeral();
-          }
-          setSyncTopo('🟢 Sincronizado','');
-          if(!silencioso) setSyncCard('🟢 Atualizado!','#E4F0DA','#276B0F');
+  setSyncTopo('🔄 Buscando...','#1A5EAA');
+
+  // Remove callback anterior se existir
+  var old = document.getElementById('jsonp-script');
+  if(old) old.parentNode.removeChild(old);
+
+  // Cria função de callback global única
+  var cbName = 'df_cb_' + Date.now();
+  window[cbName] = function(res){
+    try{
+      // Limpa
+      delete window[cbName];
+      var s = document.getElementById('jsonp-script');
+      if(s) s.parentNode.removeChild(s);
+
+      if(res && res.ok && res.data){
+        App.gastos   = res.data.expenses || [];
+        App.entradas = res.data.incomes  || [];
+        sv('df_gastos',   App.gastos);
+        sv('df_entradas', App.entradas);
+        renderLogin();
+        var abaOn = document.querySelector('.aba.on');
+        if(abaOn){
+          var aid = abaOn.id;
+          if(aid==='aba-painel') rPainel();
+          if(aid==='aba-gastos') rGastos();
+          if(aid==='aba-geral')  rGeral();
         }
-      }catch(err){
-        if(!silencioso) setSyncCard('⚠️ Erro: '+err.message,'#FAE8CE','#8A4F08');
+        setSyncTopo('🟢 Sincronizado','');
+        if(!silencioso){
+          setSyncCard('🟢 Atualizado!','#E4F0DA','#276B0F');
+          notif('Dados sincronizados ✅');
+        }
+      } else {
+        setSyncTopo('🟡 Sem dados no Sheets','#F5A623');
       }
-    } else {
-      setSyncTopo('🟡 Usando dados locais','#F5A623');
-      if(!silencioso) setSyncCard('🔴 Erro '+xhr.status,'#FAE0E0','#9E2B2B');
+    }catch(err){
+      setSyncTopo('🟡 Erro ao processar','#F5A623');
     }
   };
-  xhr.onerror  =function(){ setSyncTopo('🟡 Offline','#F5A623'); };
-  xhr.ontimeout=function(){ setSyncTopo('🟡 Timeout','#F5A623'); };
-  try{ xhr.send(); }catch(e){ setSyncTopo('🟡 Erro de rede','#F5A623'); }
+
+  // Timeout caso o script não carregue
+  var timer = setTimeout(function(){
+    delete window[cbName];
+    setSyncTopo('🟡 Usando dados locais','#F5A623');
+    if(!silencioso) setSyncCard('🔴 Timeout','#FAE0E0','#9E2B2B');
+  }, 15000);
+
+  // Injeta script JSONP (sem CORS!)
+  var script = document.createElement('script');
+  script.id  = 'jsonp-script';
+  script.src = SHEETS_URL + '?action=getAll&callback=' + cbName;
+  script.onerror = function(){
+    clearTimeout(timer);
+    delete window[cbName];
+    setSyncTopo('🟡 Usando dados locais','#F5A623');
+    if(!silencioso) setSyncCard('🔴 Erro de rede','#FAE0E0','#9E2B2B');
+  };
+  document.head.appendChild(script);
 }
+
 
 function iniciarSync(){
   pararSync();
   buscar(true);
-  App.syncTimer=setInterval(function(){ buscar(true); },30000);
+  App.syncTimer = setInterval(function(){ buscar(true); }, 30000);
 }
 function pararSync(){
-  if(App.syncTimer){ clearInterval(App.syncTimer); App.syncTimer=null; }
+  if(App.syncTimer){ clearInterval(App.syncTimer); App.syncTimer = null; }
 }
 
 
